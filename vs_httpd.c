@@ -2,22 +2,6 @@
  * vs_httpd.c
  *
  * Very Simple HTTP server that can deliver static files very fast
- *
- * Copyright (C) 2010 Yoichi Kawasaki All rights reserved.
- * yokawasa at gmail dot com
- * yk55.com
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 
 #include <stdio.h>
@@ -56,14 +40,17 @@ typedef struct EXT2MIME {
    const char *type;
    const char *ext[];
 } ext2mime;
+static const ext2mime ext_txt = {"text/plain",{"txt",NULL}};
 static const ext2mime ext_html = {"text/html",{"html","htm",NULL}};
 static const ext2mime ext_gif  = {"image/gif",{"gif",NULL}};
 static const ext2mime ext_png  = {"image/png",{"png",NULL}};
 static const ext2mime ext_jpeg = {"image/jpeg",{"jpg","jpeg","jfif",NULL}};
 static const ext2mime ext_css  = {"text/css",{"css",NULL}};
+static const ext2mime ext_pdf  = {"application/pdf",{"pdf",NULL}};
 static const ext2mime* const extensions[] = {
-   &ext_html, &ext_gif, &ext_png, &ext_jpeg, &ext_css, NULL
+   &ext_txt, &ext_html, &ext_gif, &ext_png, &ext_jpeg, &ext_css, &ext_pdf, NULL
 };
+
 static const char *find_mime_type(char *buf)
 {
    const ext2mime *e2m;
@@ -121,6 +108,56 @@ static int exists(const char* path, char **complemented_path, int *filesize)
     return 0;
 }
 
+/* 
+ * Copying from libevent/sample/http-server.c
+ *
+ * Callback used for the /dump URI, and for every non-GET request:
+ * dumps all information to stdout and gives back a trivial 200 ok */
+static void
+dump_request_cb(struct evhttp_request *req, void *arg)
+{
+    const char *cmdtype;
+    struct evkeyvalq *headers;
+    struct evkeyval *header;
+    struct evbuffer *buf;
+
+    switch (evhttp_request_get_command(req)) {
+    case EVHTTP_REQ_GET: cmdtype = "GET"; break;
+    case EVHTTP_REQ_POST: cmdtype = "POST"; break;
+    case EVHTTP_REQ_HEAD: cmdtype = "HEAD"; break;
+    case EVHTTP_REQ_PUT: cmdtype = "PUT"; break;
+    case EVHTTP_REQ_DELETE: cmdtype = "DELETE"; break;
+    case EVHTTP_REQ_OPTIONS: cmdtype = "OPTIONS"; break;
+    case EVHTTP_REQ_TRACE: cmdtype = "TRACE"; break;
+    case EVHTTP_REQ_CONNECT: cmdtype = "CONNECT"; break;
+    case EVHTTP_REQ_PATCH: cmdtype = "PATCH"; break;
+    default: cmdtype = "unknown"; break;
+    }
+
+    printf("Received a %s request for %s\nHeaders:\n",
+        cmdtype, evhttp_request_get_uri(req));
+
+    headers = evhttp_request_get_input_headers(req);
+    for (header = headers->tqh_first; header;
+        header = header->next.tqe_next) {
+        printf("  %s: %s\n", header->key, header->value);
+    }
+
+    buf = evhttp_request_get_input_buffer(req);
+    puts("Input data: <<<");
+    while (evbuffer_get_length(buf)) {
+        int n;
+        char cbuf[128];
+        n = evbuffer_remove(buf, cbuf, sizeof(cbuf));
+        if (n > 0)
+            (void) fwrite(cbuf, 1, n, stdout);
+    }
+    puts(">>>");
+
+    evhttp_send_reply(req, 200, "OK", NULL);
+}
+
+
 void main_request_handler(struct evhttp_request *r, void *args)
 {
     apr_status_t rv;
@@ -172,7 +209,7 @@ void main_request_handler(struct evhttp_request *r, void *args)
 
    if(g_config->verbose) {
         fprintf(stderr, "res mimetype=%s\n", mimetype);
-        fprintf(stderr, "res file size=%d\n", len);
+        fprintf(stderr, "res file size=%d\n", (int)len);
         fprintf(stderr, "res file output=%s\n", filebuf);
     }
 
@@ -260,6 +297,9 @@ int main(int argc, char **argv)
     /* event driven http */
     event_init();
     httpd = evhttp_start(g_config->svr_addr, g_config->svr_port);
+
+    evhttp_set_cb(httpd, "/dump", dump_request_cb, NULL);
+
     evhttp_set_gencb(httpd, main_request_handler, NULL);
     event_dispatch();
     evhttp_free(httpd);

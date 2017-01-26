@@ -1,4 +1,0 @@
- - add caching option (cache static files)
- - add logging option (hopefully buffered logging)
- - add more meme types
- - add plugin framework

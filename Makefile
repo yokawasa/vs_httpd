@@ -1,13 +1,20 @@
+LIBAPR_CPPFLAGS = $(shell apr-1-config --cppflags --includes)
+LIBEVENT_CPPFLAGS = -I/usr/include
+LIBAPR_LIBS = $(shell apr-1-config --link-ld)
+LIBEVENT_LIBS = -levent
+
 CC = gcc
-CFLAGS = -I/usr/local/include -I/home/apache/include -Wall -g
-LIBS = -L/usr/lib -L/usr/local/lib -levent -L/home/apache/lib -lapr-1
-EXEC = vs_httpd
+CFLAGS = $(LIBAPR_CPPFLAGS) $(LIBEVENT_CPPFLAGS)
+LIBS = $(LIBAPR_LIBS) $(LIBEVENT_LIBS)
 
-main : vs_httpd.o
-	$(CC) $(LIBS) -o $(EXEC) $<
+OBJS= vs_httpd.o
+TARGET = vs_httpd
 
-vs_httpd.o : vs_httpd.c
-	$(CC) $(CFLAGS) -o $@ -c $<
+.SUFFIXES: .c .o
 
-clean :
-	rm -rf *.o $(EXEC)
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) $(LIBS) -o $(TARGET)
+
+.PHONY: clean
+clean:
+	$(RM) *.o $(TARGET)
